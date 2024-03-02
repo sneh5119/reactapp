@@ -1,0 +1,94 @@
+# Starter pipeline
+
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- develop
+
+pool:
+  vmImage: ubuntu-latest
+stages:
+  - stage: Build
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: Determine_Affected
+        displayName: Determine Affected Nx Projects
+        steps:
+          - task: NodeTool@0
+            displayName: Use Node.js v18.13.0
+            inputs:
+              versionSpec: 18.13.0
+              
+          - script: npm install --force
+            displayName: npm install 
+
+          - script: npm run build
+            displayName: npm build
+ 
+          - task: CopyFiles@2
+            inputs:
+              sourceFolder: '$(Build.SourcesDirectory)/build'
+              targetFolder: '$(Build.ArtifactStagingDirectory)'
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: dist
+  - stage: Docker
+    displayName: Build & Push Docker image to AWS ECR
+    jobs:
+     - job: Build_and_Push
+       displayName: Build & Push Docker image
+       pool:
+         vmImage: ubuntu-latest
+       steps:
+         - task: DownloadBuildArtifacts@0
+           inputs:
+             buildType: 'current'
+             downloadType: 'single'
+             artifactName: 'dist'
+             downloadPath: '$(Build.SourcesDirectory)'
+        
+         - task: Docker@2
+           displayName: Build an image UI
+           inputs:
+             command: build
+             dockerfile: '$(Build.SourcesDirectory)/DockerFile'
+             buildContext: '$(Build.SourcesDirectory)'
+             tags: "$(Build.SourceVersion)"
+             repository: "promissory/frontend"
+         
+         - task: AmazonWebServices.aws-vsts-tools.ECRPushImage.ECRPushImage@1
+           displayName: 'Push Image: ui'
+           inputs:
+             awsCredentials: 'AWS_CHARLES'
+             regionName: 'ap-south-1'
+             imageSource: 'imagename'
+             sourceImageTag: "$(Build.SourceVersion)"
+             sourceImageName: "promissory/frontend"
+             pushTag: "$(Build.SourceVersion)"
+             repositoryName: 'promissory/frontend'
+  - stage: Deploy
+    displayName: Deploy UI Helm charts
+    jobs:   
+      - job: deploy_apps
+        displayName: Deploy helm chart
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+         - task: HelmDeploy@0
+           displayName: 'Deploy ui'
+           inputs:
+            connectionType: 'Kubernetes Service Connection'
+            kubernetesServiceConnection: 'dev-eks-promissory'
+            namespace: 'default'
+            releaseName: ui
+            install: true
+            waitForExecution: false
+            command: 'upgrade'
+            chartType: 'FilePath'
+            chartPath: './promissory-frontend'
+            overrideValues: |
+               image.tag="$(Build.SourceVersion)"
