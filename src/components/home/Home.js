@@ -418,7 +418,7 @@ const Home = () => {
           <div class="customer-reviews-row p-5 pb-2">
             <div class="row">
               <div class="col-5 d-flex align-items-center">
-                <h4 class="mb-5 pri-clr">Happy Customers</h4>
+                <h4 class="mb-5 pri-clr">Happy Customers !!</h4>
               </div>
 
               <div class="col-5">
